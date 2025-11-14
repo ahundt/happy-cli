@@ -4,6 +4,27 @@ Code on the go controlling claude code from your mobile device.
 
 Free. Open source. Code anywhere.
 
+## Documentation
+
+Comprehensive technical documentation is available in the [`/docs`](./docs) directory:
+
+- **[Architecture Overview](./docs/ARCHITECTURE.md)** - Complete system architecture covering:
+  - Security & authentication (challenge-response, end-to-end encryption)
+  - Session syncing & real-time communication (WebSocket, RPC)
+  - Claude Code CLI integration (local & remote modes)
+
+- **[Claude Code Integration](./docs/CLAUDE-CODE-INTEGRATION.md)** - Deep dive into Claude Code CLI integration:
+  - How happy-cli wraps and controls Claude Code
+  - Code injection mechanisms (launcher scripts & hooks)
+  - All 7 interaction points between happy-cli and Claude Code
+  - Message formats (JSONL & stream-json)
+
+- **[Mode Switching](./docs/MODE-SWITCHING.md)** - Explains mode switching behavior:
+  - How processes are killed and restarted during mode switches
+  - Local (PTY) ↔ Remote (SDK) transitions
+  - Session continuity via `--resume` flag
+  - Performance implications
+
 ## Installation
 
 ```bash
