@@ -1,0 +1,9 @@
+{
+  "sha": "b53ef2e133689153a4e832dbba150e0abae4f4ea",
+  "parent_sha": "680705524b99f4217a4699c566fe9bc52a64709d",
+  "author_name": "Andrew Hundt",
+  "author_email": "ATHundt@gmail.com",
+  "date_full": "2025-11-15T01:51:01+00:00",
+  "commit_subject": "feat: enable cross-device profile sync with backwards compatibility",
+  "commit_body": "SETTINGS SYNC:\n- Add schema version detection (SUPPORTED_SCHEMA_VERSION = 2)\n- Implement update-account settings handler in sync.ts\n- Add version mismatch warnings for user awareness\n- Settings now sync in real-time across GUI instances\n\nCONFIRMATION DIALOGS:\n- Add confirmation dialog before profile deletion\n- Prevents accidental data loss from quick taps\n\nTRANSLATIONS:\n- Add profiles.delete translations for 7 languages\n- Support: English, Spanish, Catalan, Polish, Portuguese, Russian, Chinese\n\nBACKWARDS COMPATIBILITY:\n- Old clients (v1) ignore new profile fields gracefully\n- New clients handle old settings with defaults\n- Zero breaking changes to existing functionality\n- Graceful degradation for all scenarios\n\nFILES MODIFIED:\n- sources/sync/settings.ts (schema version constant and defaults)\n- sources/sync/sync.ts (update-account handler with decryption)\n- sources/app/(app)/settings/profiles.tsx (Alert confirmation dialog)\n- sources/text/translations/*.ts (7 language files)\n\nTECHNICAL DETAILS:\n- Schema version v1 → v2 migration automatic\n- Settings decrypted, parsed, and validated on sync\n- Console warnings for schema version mismatches\n- Error handling prevents crashes on sync failures\n\nTested scenarios:\n- ✅ Settings sync across multiple GUI instances\n- ✅ Confirmation dialog before profile deletion\n- ✅ Schema version mismatch warnings\n- ✅ Backwards compatibility with v1 settings\n\nRelated to yolo-mode-persistence and profile management feature\nBuilds on previous UUID and wizard fixes (commit 6807055)"
+}

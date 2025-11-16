@@ -1,0 +1,9 @@
+{
+  "sha": "680705524b99f4217a4699c566fe9bc52a64709d",
+  "parent_sha": "0ecaffe4b3dc147a8b5e48a4188d7babc56708db",
+  "author_name": "Andrew Hundt",
+  "author_email": "ATHundt@gmail.com",
+  "date_full": "2025-11-15T00:48:32+00:00",
+  "commit_subject": "fix: critical UUID generation and wizard UX bugs in profile management",
+  "commit_body": "BREAKING FIX: Profile ID Generation\n- Replace Date.now() timestamps with proper UUIDs using expo-crypto\n- Fixes schema validation errors that would crash on profile creation\n- Affected locations:\n  * sources/app/(app)/new/index.tsx:628\n  * sources/app/(app)/settings/profiles.tsx:113\n  * sources/app/(app)/settings/profiles.tsx:180\n\nUX FIX: Remove Empty Tmux Wizard Step\n- Remove placeholder tmux-config step from wizard flow\n- Simplify navigation: welcome → ai-backend → session-details\n- Users configure tmux in profile settings instead\n- Update step numbering accordingly\n\nFiles changed:\n- sources/app/(app)/new/index.tsx\n- sources/app/(app)/settings/profiles.tsx\n\nRelated to profile management and yolo mode persistence feature.\nAddresses critical bugs identified in cross-repository validation.\n\nCo-authored-by: Claude (Anthropic AI Assistant)"
+}

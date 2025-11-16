@@ -1,0 +1,100 @@
+commit 0ecaffe4b3dc147a8b5e48a4188d7babc56708db
+Author: Andrew Hundt <ATHundt@gmail.com>
+Date:   Thu Nov 6 20:40:04 2025 -0500
+
+    feat: add profile synchronization support and fix type exports
+    
+    Adds API schemas for profile synchronization across clients and fixes RevenueCat type exports to properly separate runtime values from types.
+    
+    Changes:
+    - ApiUpdateProfileSchema: Profile update events for cross-client sync
+    - ApiDeleteProfileSchema: Profile deletion events
+    - ApiActiveProfileSchema: Active profile change events
+    - Fixed RevenueCat exports to separate types from runtime enums
+    
+    Files affected:
+    - sources/sync/apiTypes.ts: Added profile synchronization schemas
+    - sources/sync/revenueCat/index.ts: Fixed type vs value exports
+
+diff --git a/sources/sync/apiTypes.ts b/sources/sync/apiTypes.ts
+index 4de9255..83338b8 100644
+--- a/sources/sync/apiTypes.ts
++++ b/sources/sync/apiTypes.ts
+@@ -147,6 +147,27 @@ export const ApiKvBatchUpdateSchema = z.object({
+     }))
+ });
+ 
++// Profile update schemas for cross-client synchronization
++export const ApiUpdateProfileSchema = z.object({
++    t: z.literal('update-profile'),
++    profileId: z.string(),
++    profile: z.object({
++        version: z.number(),
++        value: z.string() // Encrypted profile data
++    })
++});
++
++export const ApiDeleteProfileSchema = z.object({
++    t: z.literal('delete-profile'),
++    profileId: z.string()
++});
++
++export const ApiActiveProfileSchema = z.object({
++    t: z.literal('active-profile'),
++    profileId: z.string(),
++    machineId: z.string()
++});
++
+ export const ApiUpdateSchema = z.discriminatedUnion('t', [
+     ApiUpdateNewMessageSchema,
+     ApiUpdateNewSessionSchema,
+@@ -159,12 +180,18 @@ export const ApiUpdateSchema = z.discriminatedUnion('t', [
+     ApiDeleteArtifactSchema,
+     ApiRelationshipUpdatedSchema,
+     ApiNewFeedPostSchema,
+-    ApiKvBatchUpdateSchema
++    ApiKvBatchUpdateSchema,
++    ApiUpdateProfileSchema,
++    ApiDeleteProfileSchema,
++    ApiActiveProfileSchema
+ ]);
+ 
+ export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;
+ export type ApiRelationshipUpdated = z.infer<typeof ApiRelationshipUpdatedSchema>;
+ export type ApiKvBatchUpdate = z.infer<typeof ApiKvBatchUpdateSchema>;
++export type ApiUpdateProfile = z.infer<typeof ApiUpdateProfileSchema>;
++export type ApiDeleteProfile = z.infer<typeof ApiDeleteProfileSchema>;
++export type ApiActiveProfile = z.infer<typeof ApiActiveProfileSchema>;
+ export type ApiUpdate = z.infer<typeof ApiUpdateSchema>;
+ 
+ //
+diff --git a/sources/sync/revenueCat/index.ts b/sources/sync/revenueCat/index.ts
+index f93e8fa..90c73c1 100644
+--- a/sources/sync/revenueCat/index.ts
++++ b/sources/sync/revenueCat/index.ts
+@@ -1,20 +1,21 @@
+ // Main export that selects the correct implementation based on platform
+ // React Native's bundler will automatically choose .native.ts or .web.ts
+ 
+-export { 
++export type {
+     RevenueCatInterface,
+     CustomerInfo,
+     Product,
+     Offerings,
+     PurchaseResult,
+     RevenueCatConfig,
+-    LogLevel,
+-    PaywallResult,
+     PaywallOptions,
+     Offering,
+     Package
+ } from './types';
+ 
++// Export enums as values since they are used as runtime values
++export { LogLevel, PaywallResult } from './types';
++
+ // This will be resolved to either revenueCat.native.ts or revenueCat.web.ts
+ // based on the platform
+ export { default as RevenueCat } from './revenueCat';
+\ No newline at end of file

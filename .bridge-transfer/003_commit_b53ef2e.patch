@@ -1,0 +1,331 @@
+commit b53ef2e133689153a4e832dbba150e0abae4f4ea
+Author: Andrew Hundt <ATHundt@gmail.com>
+Date:   Sat Nov 15 01:51:01 2025 +0000
+
+    feat: enable cross-device profile sync with backwards compatibility
+    
+    SETTINGS SYNC:
+    - Add schema version detection (SUPPORTED_SCHEMA_VERSION = 2)
+    - Implement update-account settings handler in sync.ts
+    - Add version mismatch warnings for user awareness
+    - Settings now sync in real-time across GUI instances
+    
+    CONFIRMATION DIALOGS:
+    - Add confirmation dialog before profile deletion
+    - Prevents accidental data loss from quick taps
+    
+    TRANSLATIONS:
+    - Add profiles.delete translations for 7 languages
+    - Support: English, Spanish, Catalan, Polish, Portuguese, Russian, Chinese
+    
+    BACKWARDS COMPATIBILITY:
+    - Old clients (v1) ignore new profile fields gracefully
+    - New clients handle old settings with defaults
+    - Zero breaking changes to existing functionality
+    - Graceful degradation for all scenarios
+    
+    FILES MODIFIED:
+    - sources/sync/settings.ts (schema version constant and defaults)
+    - sources/sync/sync.ts (update-account handler with decryption)
+    - sources/app/(app)/settings/profiles.tsx (Alert confirmation dialog)
+    - sources/text/translations/*.ts (7 language files)
+    
+    TECHNICAL DETAILS:
+    - Schema version v1 → v2 migration automatic
+    - Settings decrypted, parsed, and validated on sync
+    - Console warnings for schema version mismatches
+    - Error handling prevents crashes on sync failures
+    
+    Tested scenarios:
+    - ✅ Settings sync across multiple GUI instances
+    - ✅ Confirmation dialog before profile deletion
+    - ✅ Schema version mismatch warnings
+    - ✅ Backwards compatibility with v1 settings
+    
+    Related to yolo-mode-persistence and profile management feature
+    Builds on previous UUID and wizard fixes (commit 6807055)
+
+diff --git a/sources/app/(app)/settings/profiles.tsx b/sources/app/(app)/settings/profiles.tsx
+index 584ed34..3c3a171 100644
+--- a/sources/app/(app)/settings/profiles.tsx
++++ b/sources/app/(app)/settings/profiles.tsx
+@@ -1,5 +1,5 @@
+ import React from 'react';
+-import { View, Text, Pressable, ScrollView, TextInput } from 'react-native';
++import { View, Text, Pressable, ScrollView, TextInput, Alert } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { useSettingMutable } from '@/sync/storage';
+ import { useUnistyles } from 'react-native-unistyles';
+@@ -129,19 +129,36 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
+     };
+ 
+     const handleDeleteProfile = (profile: AIBackendProfile) => {
+-        // Auto-delete profile (confirmed by design decision)
+-        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
+-        setProfiles(updatedProfiles);
+-
+-        // Clear last used profile if it was deleted
+-        if (lastUsedProfile === profile.id) {
+-            setLastUsedProfile(null);
+-        }
+-
+-        // Notify parent if this was the selected profile
+-        if (selectedProfileId === profile.id && onProfileSelect) {
+-            onProfileSelect(null);
+-        }
++        // Show confirmation dialog before deleting
++        Alert.alert(
++            t('profiles.delete.title'),
++            t('profiles.delete.message', { name: profile.name }),
++            [
++                {
++                    text: t('profiles.delete.cancel'),
++                    style: 'cancel',
++                },
++                {
++                    text: t('profiles.delete.confirm'),
++                    style: 'destructive',
++                    onPress: () => {
++                        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
++                        setProfiles(updatedProfiles);
++
++                        // Clear last used profile if it was deleted
++                        if (lastUsedProfile === profile.id) {
++                            setLastUsedProfile(null);
++                        }
++
++                        // Notify parent if this was the selected profile
++                        if (selectedProfileId === profile.id && onProfileSelect) {
++                            onProfileSelect(null);
++                        }
++                    },
++                },
++            ],
++            { cancelable: true }
++        );
+     };
+ 
+     const handleSelectProfile = (profileId: string | null) => {
+diff --git a/sources/sync/settings.ts b/sources/sync/settings.ts
+index bb15a5c..1468b3f 100644
+--- a/sources/sync/settings.ts
++++ b/sources/sync/settings.ts
+@@ -154,7 +154,13 @@ export function isProfileVersionCompatible(profileVersion: string, requiredVersi
+ // Settings Schema
+ //
+ 
++// Current schema version for backward compatibility
++export const SUPPORTED_SCHEMA_VERSION = 2;
++
+ export const SettingsSchema = z.object({
++    // Schema version for compatibility detection
++    schemaVersion: z.number().default(SUPPORTED_SCHEMA_VERSION).describe('Settings schema version for compatibility checks'),
++
+     viewInline: z.boolean().describe('Whether to view inline tool calls'),
+     inferenceOpenAIKey: z.string().nullish().describe('OpenAI API key for inference'),
+     expandTodos: z.boolean().describe('Whether to expand todo lists'),
+@@ -204,6 +210,7 @@ export type Settings = z.infer<typeof SettingsSchema>;
+ //
+ 
+ export const settingsDefaults: Settings = {
++    schemaVersion: SUPPORTED_SCHEMA_VERSION,
+     viewInline: false,
+     inferenceOpenAIKey: null,
+     expandTodos: true,
+diff --git a/sources/sync/sync.ts b/sources/sync/sync.ts
+index 42d377e..228401c 100644
+--- a/sources/sync/sync.ts
++++ b/sources/sync/sync.ts
+@@ -15,7 +15,7 @@ import { registerPushToken } from './apiPush';
+ import { Platform, AppState } from 'react-native';
+ import { isRunningOnMac } from '@/utils/platform';
+ import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
+-import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
++import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
+ import { Profile, profileParse } from './profile';
+ import { loadPendingSettings, savePendingSettings } from './persistence';
+ import { initializeTracking, tracking } from '@/track';
+@@ -1657,6 +1657,29 @@ class Sync {
+ 
+             // Apply the updated profile to storage
+             storage.getState().applyProfile(updatedProfile);
++
++            // Handle settings updates (new for profile sync)
++            if (accountUpdate.settings?.value) {
++                try {
++                    const decryptedSettings = await this.encryption.decryptRaw(accountUpdate.settings.value);
++                    const parsedSettings = settingsParse(decryptedSettings);
++
++                    // Version compatibility check
++                    const settingsSchemaVersion = parsedSettings.schemaVersion ?? 1;
++                    if (settingsSchemaVersion > SUPPORTED_SCHEMA_VERSION) {
++                        console.warn(
++                            `⚠️ Received settings schema v${settingsSchemaVersion}, ` +
++                            `we support v${SUPPORTED_SCHEMA_VERSION}. Update app for full functionality.`
++                        );
++                    }
++
++                    storage.getState().applySettings(parsedSettings, accountUpdate.settings.version);
++                    log.log(`📋 Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`);
++                } catch (error) {
++                    console.error('❌ Failed to process settings update:', error);
++                    // Don't crash on settings sync errors, just log
++                }
++            }
+         } else if (updateData.body.t === 'update-machine') {
+             const machineUpdate = updateData.body;
+             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
+diff --git a/sources/text/translations/ca.ts b/sources/text/translations/ca.ts
+index ef799e8..3b5a6d6 100644
+--- a/sources/text/translations/ca.ts
++++ b/sources/text/translations/ca.ts
+@@ -69,6 +69,17 @@ export const ca: TranslationStructure = {
+         status: 'Estat',
+     },
+ 
++    profiles: {
++        // AI backend profile management
++        title: 'Perfils de Backend d\'IA',
++        delete: {
++            title: 'Eliminar Perfil',
++            message: ({ name }: { name: string }) => `Estàs segur que vols eliminar "${name}"? Aquesta acció no es pot desfer.`,
++            confirm: 'Eliminar',
++            cancel: 'Cancel·lar',
++        },
++    },
++
+     status: {
+         connected: 'connectat',
+         connecting: 'connectant',
+diff --git a/sources/text/translations/en.ts b/sources/text/translations/en.ts
+index 3c9b2f4..71a5b74 100644
+--- a/sources/text/translations/en.ts
++++ b/sources/text/translations/en.ts
+@@ -84,6 +84,17 @@ export const en: TranslationStructure = {
+         status: 'Status',
+     },
+ 
++    profiles: {
++        // AI backend profile management
++        title: 'AI Backend Profiles',
++        delete: {
++            title: 'Delete Profile',
++            message: ({ name }: { name: string }) => `Are you sure you want to delete "${name}"? This action cannot be undone.`,
++            confirm: 'Delete',
++            cancel: 'Cancel',
++        },
++    },
++
+     status: {
+         connected: 'connected',
+         connecting: 'connecting',
+diff --git a/sources/text/translations/es.ts b/sources/text/translations/es.ts
+index db70255..6e788fc 100644
+--- a/sources/text/translations/es.ts
++++ b/sources/text/translations/es.ts
+@@ -69,6 +69,17 @@ export const es: TranslationStructure = {
+         status: 'Estado',
+     },
+ 
++    profiles: {
++        // AI backend profile management
++        title: 'Perfiles de Backend de IA',
++        delete: {
++            title: 'Eliminar Perfil',
++            message: ({ name }: { name: string }) => `¿Estás seguro de que quieres eliminar "${name}"? Esta acción no se puede deshacer.`,
++            confirm: 'Eliminar',
++            cancel: 'Cancelar',
++        },
++    },
++
+     status: {
+         connected: 'conectado',
+         connecting: 'conectando',
+diff --git a/sources/text/translations/pl.ts b/sources/text/translations/pl.ts
+index 39ab47b..5aea15f 100644
+--- a/sources/text/translations/pl.ts
++++ b/sources/text/translations/pl.ts
+@@ -80,6 +80,17 @@ export const pl: TranslationStructure = {
+         status: 'Status',
+     },
+ 
++    profiles: {
++        // AI backend profile management
++        title: 'Profile Backend AI',
++        delete: {
++            title: 'Usuń Profil',
++            message: ({ name }: { name: string }) => `Czy na pewno chcesz usunąć "${name}"? Tej czynności nie można cofnąć.`,
++            confirm: 'Usuń',
++            cancel: 'Anuluj',
++        },
++    },
++
+     status: {
+         connected: 'połączono',
+         connecting: 'łączenie',
+diff --git a/sources/text/translations/pt.ts b/sources/text/translations/pt.ts
+index 55cdc1c..71a0354 100644
+--- a/sources/text/translations/pt.ts
++++ b/sources/text/translations/pt.ts
+@@ -69,6 +69,17 @@ export const pt: TranslationStructure = {
+         status: 'Status',
+     },
+ 
++    profiles: {
++        // AI backend profile management
++        title: 'Perfis de Backend de IA',
++        delete: {
++            title: 'Excluir Perfil',
++            message: ({ name }: { name: string }) => `Tem certeza de que deseja excluir "${name}"? Esta ação não pode ser desfeita.`,
++            confirm: 'Excluir',
++            cancel: 'Cancelar',
++        },
++    },
++
+     status: {
+         connected: 'conectado',
+         connecting: 'conectando',
+diff --git a/sources/text/translations/ru.ts b/sources/text/translations/ru.ts
+index 9c7ab1e..30c9281 100644
+--- a/sources/text/translations/ru.ts
++++ b/sources/text/translations/ru.ts
+@@ -362,6 +362,17 @@ export const ru: TranslationStructure = {
+         status: 'Статус',
+     },
+ 
++    profiles: {
++        // AI backend profile management
++        title: 'Профили Backend ИИ',
++        delete: {
++            title: 'Удалить Профиль',
++            message: ({ name }: { name: string }) => `Вы уверены, что хотите удалить "${name}"? Это действие нельзя отменить.`,
++            confirm: 'Удалить',
++            cancel: 'Отмена',
++        },
++    },
++
+     status: {
+         connected: 'подключено',
+         connecting: 'подключение',
+diff --git a/sources/text/translations/zh-Hans.ts b/sources/text/translations/zh-Hans.ts
+index 2e5c36c..2816aea 100644
+--- a/sources/text/translations/zh-Hans.ts
++++ b/sources/text/translations/zh-Hans.ts
+@@ -71,6 +71,17 @@ export const zhHans: TranslationStructure = {
+         status: '状态',
+     },
+ 
++    profiles: {
++        // AI backend profile management
++        title: 'AI 后端配置',
++        delete: {
++            title: '删除配置',
++            message: ({ name }: { name: string }) => `确定要删除"${name}"吗？此操作无法撤销。`,
++            confirm: '删除',
++            cancel: '取消',
++        },
++    },
++
+     status: {
+         connected: '已连接',
+         connecting: '连接中',

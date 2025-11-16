@@ -1,0 +1,159 @@
+commit 680705524b99f4217a4699c566fe9bc52a64709d
+Author: Andrew Hundt <ATHundt@gmail.com>
+Date:   Sat Nov 15 00:48:32 2025 +0000
+
+    fix: critical UUID generation and wizard UX bugs in profile management
+    
+    BREAKING FIX: Profile ID Generation
+    - Replace Date.now() timestamps with proper UUIDs using expo-crypto
+    - Fixes schema validation errors that would crash on profile creation
+    - Affected locations:
+      * sources/app/(app)/new/index.tsx:628
+      * sources/app/(app)/settings/profiles.tsx:113
+      * sources/app/(app)/settings/profiles.tsx:180
+    
+    UX FIX: Remove Empty Tmux Wizard Step
+    - Remove placeholder tmux-config step from wizard flow
+    - Simplify navigation: welcome → ai-backend → session-details
+    - Users configure tmux in profile settings instead
+    - Update step numbering accordingly
+    
+    Files changed:
+    - sources/app/(app)/new/index.tsx
+    - sources/app/(app)/settings/profiles.tsx
+    
+    Related to profile management and yolo mode persistence feature.
+    Addresses critical bugs identified in cross-repository validation.
+    
+    Co-authored-by: Claude (Anthropic AI Assistant)
+
+diff --git a/sources/app/(app)/new/index.tsx b/sources/app/(app)/new/index.tsx
+index 03d0ff9..de6d122 100644
+--- a/sources/app/(app)/new/index.tsx
++++ b/sources/app/(app)/new/index.tsx
+@@ -21,9 +21,10 @@ import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
+ import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+ import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
+ import { StyleSheet } from 'react-native-unistyles';
++import { randomUUID } from 'expo-crypto';
+ 
+ // Wizard steps
+-type WizardStep = 'welcome' | 'ai-backend' | 'tmux-config' | 'session-details' | 'creating';
++type WizardStep = 'welcome' | 'ai-backend' | 'session-details' | 'creating';
+ 
+ // Simple temporary state for passing selections back from picker screens
+ let onMachineSelected: (machineId: string) => void = () => { };
+@@ -575,9 +576,7 @@ function NewSessionWizard() {
+                 }
+                 break;
+             case 'ai-backend':
+-                setCurrentStep('tmux-config');
+-                break;
+-            case 'tmux-config':
++                // Skip tmux-config step - configure tmux in profile settings instead
+                 setCurrentStep('session-details');
+                 break;
+             case 'session-details':
+@@ -591,14 +590,11 @@ function NewSessionWizard() {
+             case 'ai-backend':
+                 setCurrentStep('welcome');
+                 break;
+-            case 'tmux-config':
+-                setCurrentStep('ai-backend');
+-                break;
+             case 'session-details':
+                 if (selectedProfileId) {
+                     setCurrentStep('welcome');
+                 } else {
+-                    setCurrentStep('tmux-config');
++                    setCurrentStep('ai-backend');
+                 }
+                 break;
+         }
+@@ -624,7 +620,7 @@ function NewSessionWizard() {
+         }
+ 
+         const newProfile: AIBackendProfile = {
+-            id: `custom-${Date.now()}`,
++            id: randomUUID(),
+             name: newProfileName.trim(),
+             description: newProfileDescription.trim() || undefined,
+             compatibility: {
+@@ -921,46 +917,12 @@ function NewSessionWizard() {
+                     </View>
+                 );
+ 
+-            case 'tmux-config':
+-                return (
+-                    <View style={styles.wizardCard}>
+-                        <View style={styles.stepHeader}>
+-                            <View style={styles.stepNumber}>
+-                                <Text style={styles.stepNumberText}>3</Text>
+-                            </View>
+-                            <Text style={styles.stepTitle}>Tmux Configuration</Text>
+-                        </View>
+-                        <Text style={styles.stepDescription}>
+-                            Configure tmux session settings for terminal management. This allows you to see and manage your AI sessions in tmux.
+-                        </Text>
+-
+-                        <Text style={styles.stepDescription}>
+-                            Tmux configuration will be added here in the next iteration. For now, your profile will use default settings.
+-                        </Text>
+-
+-                        <View style={styles.buttonContainer}>
+-                            <Pressable
+-                                style={[styles.button, styles.buttonSecondary]}
+-                                onPress={goToPreviousStep}
+-                            >
+-                                <Text style={styles.buttonTextSecondary}>Back</Text>
+-                            </Pressable>
+-                            <Pressable
+-                                style={[styles.button, styles.buttonPrimary]}
+-                                onPress={createNewProfile}
+-                            >
+-                                <Text style={styles.buttonText}>Create Profile</Text>
+-                            </Pressable>
+-                        </View>
+-                    </View>
+-                );
+-
+             case 'session-details':
+                 return (
+                     <View style={styles.wizardCard}>
+                         <View style={styles.stepHeader}>
+                             <View style={styles.stepNumber}>
+-                                <Text style={styles.stepNumberText}>{selectedProfileId ? '2' : '4'}</Text>
++                                <Text style={styles.stepNumberText}>{selectedProfileId ? '2' : '3'}</Text>
+                             </View>
+                             <Text style={styles.stepTitle}>Session Details</Text>
+                         </View>
+diff --git a/sources/app/(app)/settings/profiles.tsx b/sources/app/(app)/settings/profiles.tsx
+index 348fbf8..584ed34 100644
+--- a/sources/app/(app)/settings/profiles.tsx
++++ b/sources/app/(app)/settings/profiles.tsx
+@@ -10,6 +10,7 @@ import { layout } from '@/components/layout';
+ import { useSafeAreaInsets } from 'react-native-safe-area-context';
+ import { useWindowDimensions } from 'react-native';
+ import { AIBackendProfile } from '@/sync/settings';
++import { randomUUID } from 'expo-crypto';
+ 
+ interface ProfileDisplay {
+     id: string;
+@@ -109,7 +110,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
+ 
+     const handleAddProfile = () => {
+         setEditingProfile({
+-            id: Date.now().toString(),
++            id: randomUUID(),
+             name: '',
+             anthropicConfig: {},
+             environmentVariables: [],
+@@ -176,7 +177,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
+         if (isBuiltIn) {
+             const newProfile: AIBackendProfile = {
+                 ...profile,
+-                id: Date.now().toString(), // Generate new ID for custom profile
++                id: randomUUID(), // Generate new UUID for custom profile
+             };
+ 
+             // Check for duplicate names (excluding the new profile)

@@ -1,0 +1,9 @@
+{
+  "sha": "0ecaffe4b3dc147a8b5e48a4188d7babc56708db",
+  "parent_sha": "ab1012df51876dcd5cf77387aa1e32dc6d7e43e6",
+  "author_name": "Andrew Hundt",
+  "author_email": "ATHundt@gmail.com",
+  "date_full": "2025-11-06T20:40:04-05:00",
+  "commit_subject": "feat: add profile synchronization support and fix type exports",
+  "commit_body": "Adds API schemas for profile synchronization across clients and fixes RevenueCat type exports to properly separate runtime values from types.\n\nChanges:\n- ApiUpdateProfileSchema: Profile update events for cross-client sync\n- ApiDeleteProfileSchema: Profile deletion events\n- ApiActiveProfileSchema: Active profile change events\n- Fixed RevenueCat exports to separate types from runtime enums\n\nFiles affected:\n- sources/sync/apiTypes.ts: Added profile synchronization schemas\n- sources/sync/revenueCat/index.ts: Fixed type vs value exports"
+}
